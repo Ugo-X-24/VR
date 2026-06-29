@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Periodic Table — VR</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+        }
+
+        canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            touch-action: none;
+        }
+
+        /* HUD */
+        #hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 20;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        #layout-bar {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            pointer-events: all;
+        }
+
+        .layout-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: rgba(255, 255, 255, 0.7);
+            padding: 7px 14px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            border-radius: 20px;
+            cursor: pointer;
+            backdrop-filter: blur(12px);
+            transition: all 0.25s;
+        }
+
+        .layout-btn.active {
+            background: #fff;
+            color: #000;
+            border-color: #fff;
+        }
+
+        .layout-btn:active {
+            transform: scale(0.95);
+        }
+
+        #vr-btn {
+            position: fixed;
+            bottom: 28px;
+            right: 20px;
+            z-index: 30;
+            background: rgba(0, 255, 150, 0.15);
+            border: 1px solid rgba(0, 255, 150, 0.5);
+            color: #00ff96;
+            padding: 12px 20px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            cursor: pointer;
+            backdrop-filter: blur(12px);
+            display: none;
+        }
+
+        #gyro-btn {
+            position: fixed;
+            bottom: 28px;
+            left: 20px;
+            z-index: 30;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.7);
+            padding: 12px 20px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            cursor: pointer;
+            backdrop-filter: blur(12px);
+        }
+
+        #gyro-btn.on {
+            background: rgba(0, 180, 255, 0.15);
+            border-color: rgba(0, 180, 255, 0.5);
+            color: #00b4ff;
+        }
+
+        #hint {
+            position: fixed;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.5);
+            padding: 7px 16px;
+            border-radius: 20px;
+            font-size: 11px;
+            white-space: nowrap;
+            backdrop-filter: blur(8px);
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+
+        /* Modal */
+        #modal {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(16px);
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        #modal.open {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        #modal-sheet {
+            background: rgba(14, 14, 14, 0.97);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 24px 24px 0 0;
+            width: 100%;
+            max-width: 500px;
+            padding: 0 0 env(safe-area-inset-bottom, 16px);
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            max-height: 92vh;
+            overflow-y: auto;
+        }
+
+        #modal.open #modal-sheet {
+            transform: translateY(0);
+        }
+
+        .sheet-handle {
+            width: 40px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            margin: 14px auto 0;
+        }
+
+        .sheet-header {
+            padding: 16px 20px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .element-badge {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .badge-symbol {
+            width: 52px;
+            height: 64px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            position: relative;
+        }
+
+        .badge-symbol .num {
+            font-size: 10px;
+            opacity: 0.6;
+            position: absolute;
+            top: 7px;
+            right: 9px;
+            font-weight: 400;
+        }
+
+        .badge-symbol .sym {
+            font-size: 26px;
+        }
+
+        .badge-symbol img {
+            width: 42px;
+            height: 42px;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+
+        .badge-info h2 {
+            font-size: 18px;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .badge-info p {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.45);
+            margin-top: 2px;
+        }
+
+        .close-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-nav {
+            display: flex;
+            gap: 8px;
+            padding: 12px 20px;
+        }
+
+        .nav-btn {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #fff;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .nav-btn:active {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .sheet-body {
+            padding: 4px 20px 20px;
+        }
+
+        .field {
+            margin-bottom: 14px;
+        }
+
+        .field label {
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.35);
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+            margin-bottom: 6px;
+        }
+
+        .field input,
+        .field textarea {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 10px;
+            color: #fff;
+            padding: 11px 13px;
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            appearance: none;
+        }
+
+        .field textarea {
+            resize: none;
+            line-height: 1.5;
+            font-style: italic;
+            color: #ccc;
+        }
+
+        .field input:focus,
+        .field textarea:focus {
+            border-color: rgba(0, 255, 150, 0.5);
+        }
+
+        .field input[type="file"] {
+            padding: 9px;
+            font-size: 12px;
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .field input[readonly] {
+            color: rgba(255, 255, 255, 0.3);
+            border-style: dashed;
+            background: rgba(255, 255, 255, 0.02);
+            cursor: not-allowed;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .row .field {
+            flex: 1;
+        }
+
+        .row .field:first-child {
+            flex: 0 0 80px;
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            margin: 16px 0;
+        }
+
+        /* Loading */
+        #loader {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            transition: opacity 0.6s;
+        }
+
+        #loader.done {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader-ring {
+            width: 48px;
+            height: 48px;
+            border: 2px solid rgba(0, 255, 150, 0.2);
+            border-top-color: #00ff96;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #loader p {
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+
+        /* Crosshair for VR */
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 24px;
+            height: 24px;
+            z-index: 50;
+            pointer-events: none;
+            display: none;
+        }
+
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 1px;
+        }
+
+        #crosshair::before {
+            width: 2px;
+            height: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        #crosshair::after {
+            height: 2px;
+            width: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="loader">
+        <div class="loader-ring"></div>
+        <p>LOADING 3D SCENE</p>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div id="hud">
+        <div id="layout-bar">
+            <button class="layout-btn active" data-layout="table">TABLE</button>
+            <button class="layout-btn" data-layout="sphere">SPHERE</button>
+            <button class="layout-btn" data-layout="helix">HELIX</button>
+            <button class="layout-btn" data-layout="grid">GRID</button>
+        </div>
+    </div>
+
+    <button id="gyro-btn">GYRO OFF</button>
+    <button id="vr-btn">ENTER VR</button>
+    <div id="hint">Drag to rotate · Tap element to edit</div>
+    <div id="crosshair"></div>
+
+    <!-- Modal Sheet -->
+    <div id="modal">
+        <div id="modal-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <div class="element-badge">
+                    <div class="badge-symbol" id="badge-symbol">
+                        <span class="num" id="badge-num">1</span>
+                        <span class="sym" id="badge-sym">H</span>
+                        <img id="badge-img" style="display:none">
+                    </div>
+                    <div class="badge-info">
+                        <h2 id="badge-name">Hydrogen</h2>
+                        <p id="badge-cat">Reactive nonmetal</p>
+                    </div>
+                </div>
+                <button class="close-btn" id="close-btn">×</button>
+            </div>
+            <div class="modal-nav">
+                <button class="nav-btn" id="prev-btn">← Prev</button>
+                <button class="nav-btn" id="next-btn">Next →</button>
+            </div>
+            <div class="sheet-body">
+                <div class="row">
+                    <div class="field"><label>Atomic #</label><input type="text" id="f-number" readonly></div>
+                    <div class="field"><label>Symbol</label><input type="text" id="f-symbol" maxlength="3"></div>
+                </div>
+                <div class="field"><label>Replace symbol with image</label><input type="file" id="f-image"
+                        accept="image/*"></div>
+                <div class="field"><label>Name</label><input type="text" id="f-name"></div>
+                <div class="field"><label>Status / Mass</label><input type="text" id="f-desc"></div>
+                <hr class="divider">
+                <div class="field"><label>Fun fact</label><textarea id="f-fact" rows="3"></textarea></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // ─── DATA ────────────────────────────────────────────────────────────────────
+        const STORAGE_KEY = '3d_periodic_table_data';
+        let elementsData = [];
+        const cached = localStorage.getItem(STORAGE_KEY);
+        if (cached) {
+            elementsData = JSON.parse(cached);
+        } else {
+            const seed = [
+                { number: 1, symbol: "H", name: "Hydrogen", mass: "1.008", category: "reactive-nonmetal", col: 1, row: 1, fact: "The most abundant chemical substance in the Universe.", image: null },
+                { number: 2, symbol: "He", name: "Helium", mass: "4.0026", category: "noble-gas", col: 18, row: 1, fact: "Discovered in the solar spectrum before it was found on Earth.", image: null },
+                { number: 3, symbol: "Li", name: "Lithium", mass: "6.94", category: "alkali", col: 1, row: 2, fact: "The lightest liquid metal density-wise at room temperature.", image: null },
+                { number: 4, symbol: "Be", name: "Beryllium", mass: "9.0122", category: "transition-metal", col: 2, row: 2, fact: "Fades to emerald hues when naturally contaminated by chromium.", image: null },
+                { number: 5, symbol: "B", name: "Boron", mass: "10.81", category: "reactive-nonmetal", col: 13, row: 2, fact: "Commonly used to create high-strength borosilicate fiberglass.", image: null },
+                { number: 6, symbol: "C", name: "Carbon", mass: "12.011", category: "reactive-nonmetal", col: 14, row: 2, fact: "Forms the fundamental chemical structural backbone for all organic life.", image: null },
+                { number: 7, symbol: "N", name: "Nitrogen", mass: "14.007", category: "reactive-nonmetal", col: 15, row: 2, fact: "Makes up roughly 78% of Earth's atmosphere.", image: null },
+                { number: 8, symbol: "O", name: "Oxygen", mass: "15.999", category: "reactive-nonmetal", col: 16, row: 2, fact: "Highly reactive gas essential for respiration across most living ecosystems.", image: null },
+                { number: 9, symbol: "F", name: "Fluorine", mass: "18.998", category: "reactive-nonmetal", col: 17, row: 2, fact: "The most chemically reactive and electronegative element in existence.", image: null },
+                { number: 10, symbol: "Ne", name: "Neon", mass: "20.180", category: "noble-gas", col: 18, row: 2, fact: "Glows with an intense, unmistakable reddish-orange tint when ionized.", image: null },
+                { number: 11, symbol: "Na", name: "Sodium", mass: "22.990", category: "alkali", col: 1, row: 3, fact: "Highly reactive alkali metal that reacts explosively with water.", image: null },
+                { number: 12, symbol: "Mg", name: "Magnesium", mass: "24.305", category: "transition-metal", col: 2, row: 3, fact: "Burns with an incredibly bright, blinding white light flame.", image: null },
+                { number: 13, symbol: "Al", name: "Aluminium", mass: "26.982", category: "transition-metal", col: 13, row: 3, fact: "The most widespread metal compound native to Earth's structural crust.", image: null },
+                { number: 14, symbol: "Si", name: "Silicon", mass: "28.085", category: "reactive-nonmetal", col: 14, row: 3, fact: "The essential semiconductor engine driving modern computing circuitry.", image: null },
+                { number: 15, symbol: "P", name: "Phosphorus", mass: "30.974", category: "reactive-nonmetal", col: 15, row: 3, fact: "Highly combustible, long used historically to generate friction matches.", image: null },
+                { number: 16, symbol: "S", name: "Sulfur", mass: "32.06", category: "reactive-nonmetal", col: 16, row: 3, fact: "Produces a strong, distinctly pungent odor reminiscent of rotten eggs.", image: null },
+                { number: 17, symbol: "Cl", name: "Chlorine", mass: "35.45", category: "reactive-nonmetal", col: 17, row: 3, fact: "A powerful oxidizer primarily used to sanitize pools and drinking water.", image: null },
+                { number: 18, symbol: "Ar", name: "Argon", mass: "39.948", category: "noble-gas", col: 18, row: 3, fact: "Commonly used as an inert shielding gas in high-temperature welding.", image: null },
+                { number: 19, symbol: "K", name: "Potassium", mass: "39.098", category: "alkali", col: 1, row: 4, fact: "Crucial electrolyte required for maintaining safe nervous system signaling.", image: null },
+                { number: 20, symbol: "Ca", name: "Calcium", mass: "40.078", category: "transition-metal", col: 2, row: 4, fact: "Primary skeletal builder responsible for constructing bone matrix strength.", image: null }
+            ];
+            const cats = ["transition-metal", "alkali", "noble-gas", "reactive-nonmetal"];
+            const extSyms = ["Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg"];
+            extSyms.forEach((sym, i) => {
+                const n = 21 + i;
+                seed.push({ number: n, symbol: sym, name: `Element ${sym}`, mass: (n * 2.4).toFixed(3), category: cats[i % 4], col: Math.min((i % 16) + 3, 18), row: Math.min(Math.floor(i / 16) + 4, 7), fact: `Synthesized or extracted under index ${n}.`, image: null });
+            });
+            elementsData = seed;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(elementsData));
+        }
+
+        // ─── CATEGORY COLORS ─────────────────────────────────────────────────────────
+        const CAT_COLOR = {
+            'alkali': { border: 0xff3232, glow: 0xff3232 },
+            'noble-gas': { border: 0xc832ff, glow: 0xc832ff },
+            'reactive-nonmetal': { border: 0x32c8ff, glow: 0x32c8ff },
+            'transition-metal': { border: 0xffc832, glow: 0xffc832 }
+        };
+        const CAT_LABEL = { 'alkali': 'Alkali metal', 'noble-gas': 'Noble gas', 'reactive-nonmetal': 'Reactive nonmetal', 'transition-metal': 'Transition metal' };
+
+        // ─── THREE.JS SETUP ──────────────────────────────────────────────────────────
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+        const renderer = new THREE.WebGLRenderer({ antialias: isMobile ? false : true, alpha: false, powerPreference: "high-performance" });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 1);
+        renderer.xr.enabled = true;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 8000);
+        camera.position.set(0, 0, 1400);
+
+        // Stars
+        const starGeo = new THREE.BufferGeometry();
+        const starVerts = [];
+        for (let i = 0; i < (isMobile ? 800 : 2000); i++) {
+            starVerts.push((Math.random() - 0.5) * 6000, (Math.random() - 0.5) * 6000, (Math.random() - 0.5) * 6000);
+        }
+        starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
+        scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.2, transparent: true, opacity: 0.5 })));
+
+        // Fog
+        scene.fog = new THREE.FogExp2(0x000000, isMobile ? 0.0008 : 0.00025);
+
+        // ─── CANVAS TEXTURE UTILITY ──────────────────────────────────────────────────
+        const texLoader = new THREE.TextureLoader();
+        const texCache = {};
+
+        let TEX_W = isMobile ? 128 : 256;
+        let TEX_H = isMobile ? 160 : 320;
+
+        function makeElementTexture(data) {
+            const W = TEX_W;
+            const H = TEX_H;
+            const cv = document.createElement('canvas');
+            cv.width = W; cv.height = H;
+            const ctx = cv.getContext('2d');
+            const c = CAT_COLOR[data.category] || CAT_COLOR['transition-metal'];
+            const hex = '#' + c.border.toString(16).padStart(6, '0');
+
+            // Background
+            ctx.fillStyle = 'rgba(0,0,0,0)';
+            ctx.clearRect(0, 0, W, H);
+
+            // Card bg
+            const grad = ctx.createLinearGradient(0, 0, W, H);
+            grad.addColorStop(0, 'rgba(255,255,255,0.05)');
+            grad.addColorStop(1, 'rgba(255,255,255,0.02)');
+            ctx.fillStyle = grad;
+            roundRect(ctx, 0, 0, W, H, 18);
+            ctx.fill();
+
+            // Border glow
+            ctx.strokeStyle = hex;
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = 0.6;
+            roundRect(ctx, 2, 2, W - 4, H - 4, 16);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+
+            // Number
+            ctx.fillStyle = 'rgba(255,255,255,0.45)';
+            ctx.font = '500 22px Helvetica';
+            ctx.textAlign = 'right';
+            ctx.fillText(data.number, W - 18, 36);
+
+            if (data.image) {
+                // Draw image in center (data URL loads sync for drawImage on most browsers)
+                const img = new Image();
+                img.src = data.image;
+                try {
+                    ctx.save();
+                    ctx.beginPath();
+                    roundRect(ctx, W / 2 - Math.floor(W * 0.2), 45, Math.floor(W * 0.4), Math.floor(W * 0.4), 10);
+                    ctx.clip();
+                    ctx.drawImage(img, W / 2 - Math.floor(W * 0.2), 45, Math.floor(W * 0.4), Math.floor(W * 0.4));
+                    ctx.restore();
+                } catch (e) {
+                    console.warn('Image draw issue', e);
+                }
+            } else {
+                // Symbol
+                ctx.fillStyle = '#ffffff';
+                ctx.font = `700 ${data.symbol.length > 2 ? '52px' : '68px'} Helvetica`;
+                ctx.textAlign = 'center';
+                ctx.shadowColor = hex;
+                ctx.shadowBlur = 20;
+                ctx.fillText(data.symbol, W / 2, 158);
+                ctx.shadowBlur = 0;
+            }
+
+            // Name
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.font = '500 20px Helvetica';
+            ctx.textAlign = 'center';
+            ctx.fillText(truncate(data.name, 14), W / 2, H - 62);
+
+            // Mass
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            ctx.font = '400 16px Helvetica';
+            ctx.fillText(data.mass, W / 2, H - 36);
+
+            return new THREE.CanvasTexture(cv);
+        }
+
+        function roundRect(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+        function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+        // ─── BUILD CARDS ─────────────────────────────────────────────────────────────
+        const CARD_W = 1.2, CARD_H = 1.6;
+        const cards = [];
+        const group = new THREE.Group();
+        scene.add(group);
+
+        function buildCard(data, index) {
+            const tex = makeElementTexture(data);
+            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W * 100, CARD_H * 100), mat);
+            mesh.userData = { index, data };
+
+            // Glow plane behind
+            const c = CAT_COLOR[data.category] || CAT_COLOR['transition-metal'];
+            const glowMat = new THREE.MeshBasicMaterial({ color: c.glow, transparent: true, opacity: 0.04, side: THREE.DoubleSide });
+            const glow = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W * 108, CARD_H * 108), glowMat);
+            glow.position.z = -2;
+            mesh.add(glow);
+
+            group.add(mesh);
+            cards.push(mesh);
+            return mesh;
+        }
+
+        elementsData.forEach((d, i) => buildCard(d, i));
+
+        // ─── LAYOUT POSITIONS ────────────────────────────────────────────────────────
+        const SCALE = 140;
+        const layouts = {
+            table: (d, i) => ({ x: (d.col - 9.5) * SCALE, y: -(d.row - 4) * SCALE, z: 0, rx: 0, ry: 0 }),
+            sphere: (d, i) => {
+                const total = elementsData.length;
+                const phi = Math.acos(-1 + (2 * i) / total);
+                const theta = Math.sqrt(total * Math.PI) * phi;
+                const r = 600;
+                return {
+                    x: r * Math.sin(phi) * Math.sin(theta),
+                    y: r * Math.cos(phi),
+                    z: r * Math.sin(phi) * Math.cos(theta),
+                    rx: -(phi - Math.PI / 2), ry: theta
+                };
+            },
+            helix: (d, i) => {
+                const r = 600, theta = i * 0.175 + Math.PI, y = (i * 12) - 450;
+                return { x: r * Math.sin(theta), y, z: r * Math.cos(theta), rx: 0, ry: theta };
+            },
+            grid: (d, i) => ({
+                x: ((i % 5) - 2) * 200, y: ((Math.floor(i / 5) % 5) - 2) * 200, z: -(Math.floor(i / 25) - 2) * 350, rx: 0, ry: 0
+            })
+        };
+
+        let currentLayout = 'table';
+        const targetPos = cards.map(() => ({ x: 0, y: 0, z: 0, rx: 0, ry: 0 }));
+        const currentPos = cards.map(() => ({ x: 0, y: 0, z: 0, rx: 0, ry: 0 }));
+
+        function setLayout(name) {
+            currentLayout = name;
+            elementsData.forEach((d, i) => {
+                const p = layouts[name](d, i);
+                targetPos[i] = p;
+            });
+            document.querySelectorAll('.layout-btn').forEach(b => b.classList.toggle('active', b.dataset.layout === name));
+        }
+        setLayout('table');
+        // Snap to initial
+        cards.forEach((c, i) => {
+            const p = targetPos[i];
+            c.position.set(p.x, p.y, p.z);
+            c.rotation.set(p.rx, p.ry, 0);
+            currentPos[i] = { ...p };
+        });
+
+        // ─── TOUCH / MOUSE CONTROLS ──────────────────────────────────────────────────
+        let isDragging = false;
+        let lastTouch = null;
+        let rotX = -0.1, rotY = 0.3;
+        let targetRotX = -0.1, targetRotY = 0.3;
+        let autoRotate = true;
+        let pinchDist0 = null, camZ0 = null;
+        const MIN_Z = 300, MAX_Z = 2400;
+
+        function getDistance(t) {
+            const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        renderer.domElement.addEventListener('touchstart', e => {
+            e.preventDefault(); // Prevent zoom/scroll
+            if (e.touches.length === 2) {
+                pinchDist0 = getDistance(e.touches);
+                camZ0 = camera.position.z;
+                return;
+            }
+            isDragging = true; autoRotate = false;
+            lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }, { passive: false });
+
+        renderer.domElement.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (e.touches.length === 2 && pinchDist0 !== null) {
+                const d = getDistance(e.touches);
+                camera.position.z = Math.max(MIN_Z, Math.min(MAX_Z, camZ0 * (pinchDist0 / d)));
+                return;
+            }
+            if (!isDragging || !lastTouch) return;
+            const dx = e.touches[0].clientX - lastTouch.x;
+            const dy = e.touches[0].clientY - lastTouch.y;
+            targetRotY += dx * 0.006;
+            targetRotX -= dy * 0.006;
+            targetRotX = Math.max(-1, Math.min(1, targetRotX));
+            lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }, { passive: false });
+
+        renderer.domElement.addEventListener('touchend', e => {
+            isDragging = false; pinchDist0 = null;
+            if (e.changedTouches.length === 1 && !autoRotate) {
+                setTimeout(() => { autoRotate = true; }, 3000);
+            }
+            // Tap detection moved to separate listener
+        });
+
+        renderer.domElement.addEventListener('mousedown', e => { isDragging = true; autoRotate = false; lastTouch = { x: e.clientX, y: e.clientY }; });
+        window.addEventListener('mousemove', e => {
+            if (!isDragging) return;
+            targetRotY += (e.clientX - lastTouch.x) * 0.005;
+            targetRotX -= (e.clientY - lastTouch.y) * 0.005;
+            targetRotX = Math.max(-1, Math.min(1, targetRotX));
+            lastTouch = { x: e.clientX, y: e.clientY };
+        });
+        window.addEventListener('mouseup', () => { isDragging = false; setTimeout(() => autoRotate = true, 3000); });
+        window.addEventListener('click', e => { if (!isDragging) checkRaycast(e.clientX, e.clientY, false); });
+
+        // ─── RAYCASTING ───────────────────────────────────────────────────────────────
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let tapStart = null;
+
+        renderer.domElement.addEventListener('touchstart', e => {
+            tapStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+        }, { passive: true });
+
+        renderer.domElement.addEventListener('touchend', e => {
+            if (!tapStart) return;
+            const dx = Math.abs(e.changedTouches[0].clientX - tapStart.x);
+            const dy = Math.abs(e.changedTouches[0].clientY - tapStart.y);
+            const dt = Date.now() - tapStart.t;
+            if (dx < 12 && dy < 12 && dt < 300) {
+                checkRaycast(e.changedTouches[0].clientX, e.changedTouches[0].clientY, false);
+            }
+            tapStart = null;
+        }, { passive: true });
+
+        function checkRaycast(cx, cy, isTouchStart) {
+            if (isTouchStart) return;
+            mouse.x = (cx / window.innerWidth) * 2 - 1;
+            mouse.y = -(cy / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(cards, false);
+            if (hits.length > 0) {
+                const card = hits[0].object;
+                if (card.userData.index !== undefined) openModal(card.userData.index);
+            }
+        }
+
+        // ─── GYROSCOPE ───────────────────────────────────────────────────────────────
+        let gyroActive = false;
+        let gyroAlpha = 0, gyroBeta = 0, gyroGamma = 0;
+        const gyroBtn = document.getElementById('gyro-btn');
+
+        function handleOrientation(e) {
+            if (!gyroActive) return;
+            const beta = (e.beta || 0) * Math.PI / 180;
+            const gamma = (e.gamma || 0) * Math.PI / 180;
+            targetRotX = Math.max(-0.8, Math.min(0.8, -(beta - Math.PI / 4) * 0.5));
+            targetRotY += gamma * 0.003;
+        }
+
+        gyroBtn.addEventListener('click', async () => {
+            if (gyroActive) {
+                gyroActive = false;
+                window.removeEventListener('deviceorientation', handleOrientation);
+                gyroBtn.textContent = 'GYRO OFF';
+                gyroBtn.classList.remove('on');
+                return;
+            }
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const perm = await DeviceOrientationEvent.requestPermission();
+                    if (perm !== 'granted') return;
+                } catch (e) { return; }
+            }
+            gyroActive = true;
+            window.addEventListener('deviceorientation', handleOrientation);
+            gyroBtn.textContent = 'GYRO ON';
+            gyroBtn.classList.add('on');
+            autoRotate = false;
+        });
+
+        // ─── VR ──────────────────────────────────────────────────────────────────────
+        const vrBtn = document.getElementById('vr-btn');
+        const crosshair = document.getElementById('crosshair');
+
+        if ('xr' in navigator) {
+            navigator.xr.isSessionSupported('immersive-vr').then(supported => {
+                if (supported) {
+                    vrBtn.style.display = 'block';
+                    vrBtn.addEventListener('click', async () => {
+                        const session = await navigator.xr.requestSession('immersive-vr', {
+                            requiredFeatures: ['viewer'],
+                            optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+                        });
+                        renderer.xr.setSession(session);
+                        crosshair.style.display = 'block';
+                        vrBtn.textContent = 'EXIT VR';
+                        session.addEventListener('end', () => {
+                            crosshair.style.display = 'none';
+                            vrBtn.textContent = 'ENTER VR';
+                        });
+                    });
+                }
+            });
+        }
+
+        // ─── MODAL ───────────────────────────────────────────────────────────────────
+        const modal = document.getElementById('modal');
+        let modalIndex = 0;
+
+        const fNum = document.getElementById('f-number');
+        const fSym = document.getElementById('f-symbol');
+        const fName = document.getElementById('f-name');
+        const fDesc = document.getElementById('f-desc');
+        const fFact = document.getElementById('f-fact');
+        const fImg = document.getElementById('f-image');
+        const badgeSym = document.getElementById('badge-sym');
+        const badgeNum = document.getElementById('badge-num');
+        const badgeName = document.getElementById('badge-name');
+        const badgeCat = document.getElementById('badge-cat');
+        const badgeImg = document.getElementById('badge-img');
+        const badgeSymEl = document.getElementById('badge-symbol');
+
+        function openModal(idx) {
+            modalIndex = idx;
+            const d = elementsData[idx];
+            fNum.value = d.number;
+            fSym.value = d.symbol;
+            fName.value = d.name;
+            fDesc.value = d.mass;
+            fFact.value = d.fact;
+            fImg.value = '';
+
+            badgeNum.textContent = d.number;
+            badgeName.textContent = d.name;
+            badgeCat.textContent = CAT_LABEL[d.category] || d.category;
+
+            const c = CAT_COLOR[d.category] || CAT_COLOR['transition-metal'];
+            const hex = '#' + c.border.toString(16).padStart(6, '0');
+            badgeSymEl.style.background = hex + '22';
+            badgeSymEl.style.border = '1px solid ' + hex + '55';
+
+            if (d.image) {
+                badgeSym.style.display = 'none';
+                badgeImg.src = d.image;
+                badgeImg.style.display = 'block';
+            } else {
+                badgeSym.textContent = d.symbol;
+                badgeSym.style.display = '';
+                badgeImg.style.display = 'none';
+            }
+
+            modal.classList.add('open');
+        }
+
+        function closeModal() { modal.classList.remove('open'); }
+
+        document.getElementById('close-btn').addEventListener('click', closeModal);
+        modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+        document.getElementById('prev-btn').addEventListener('click', () => openModal((modalIndex - 1 + elementsData.length) % elementsData.length));
+        document.getElementById('next-btn').addEventListener('click', () => openModal((modalIndex + 1) % elementsData.length));
+
+        function syncData() {
+            const d = elementsData[modalIndex];
+            d.symbol = fSym.value;
+            d.name = fName.value;
+            d.mass = fDesc.value;
+            d.fact = fFact.value;
+            badgeName.textContent = d.name;
+            if (!d.image) badgeSym.textContent = d.symbol;
+            refreshCard(modalIndex);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(elementsData));
+        }
+        [fSym, fName, fDesc, fFact].forEach(el => el.addEventListener('input', syncData));
+
+        fImg.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                elementsData[modalIndex].image = ev.target.result;
+                badgeSym.style.display = 'none';
+                badgeImg.src = ev.target.result;
+                badgeImg.style.display = 'block';
+                refreshCard(modalIndex);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(elementsData));
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function refreshCard(idx) {
+            const card = cards[idx];
+            if (!card) return;
+            if (card.material.map) card.material.map.dispose();
+            card.material.map = makeElementTexture(elementsData[idx]);
+            card.material.needsUpdate = true;
+        }
+
+        // ─── LAYOUT BUTTONS ──────────────────────────────────────────────────────────
+        document.querySelectorAll('.layout-btn').forEach(btn => {
+            btn.addEventListener('click', () => setLayout(btn.dataset.layout));
+        });
+
+        // ─── RESIZE ──────────────────────────────────────────────────────────────────
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ─── ANIMATE ─────────────────────────────────────────────────────────────────
+        const LERP = 0.08;
+        const CARD_LERP = 0.06;
+        let frame = 0;
+
+        function animate() {
+            renderer.setAnimationLoop(tick);
+        }
+
+        function tick() {
+            frame++;
+            if (autoRotate && !renderer.xr.isPresenting) targetRotY += 0.003;
+
+            rotX += (targetRotX - rotX) * LERP;
+            rotY += (targetRotY - rotY) * LERP;
+            group.rotation.x = rotX;
+            group.rotation.y = rotY;
+
+            // Smooth card transitions
+            cards.forEach((card, i) => {
+                const tp = targetPos[i];
+                const cp = currentPos[i];
+                cp.x += (tp.x - cp.x) * CARD_LERP;
+                cp.y += (tp.y - cp.y) * CARD_LERP;
+                cp.z += (tp.z - cp.z) * CARD_LERP;
+                cp.rx += (tp.rx - cp.rx) * CARD_LERP;
+                cp.ry += (tp.ry - cp.ry) * CARD_LERP;
+                card.position.set(cp.x, cp.y, cp.z);
+                card.rotation.set(cp.rx, cp.ry, 0);
+
+                // Face camera in VR
+                if (renderer.xr.isPresenting) {
+                    card.lookAt(camera.position);
+                }
+
+                // Pulse glow
+                const glow = card.children[0];
+                if (glow) glow.material.opacity = 0.04 + 0.02 * Math.sin(frame * 0.02 + i * 0.3);
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // ─── HIDE LOADER ─────────────────────────────────────────────────────────────
+        window.addEventListener('load', () => {
+            setTimeout(() => { document.getElementById('loader').classList.add('done'); animate(); }, 600);
+            setTimeout(() => { document.getElementById('hint').style.opacity = '0'; }, 4000);
+        });
+    </script>
+</body>
+
+</html>
